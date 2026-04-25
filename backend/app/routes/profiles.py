@@ -24,6 +24,8 @@ def get_profile(user_id: str) -> UserProfile:
     return UserProfile(
         id=row["id"],
         name=row.get("name"),
+        spotifyDisplayName=row.get("spotify_display_name"),
+        spotifyEmail=row.get("spotify_email"),
         calibrationComplete=row.get("calibration_complete", False),
         brainwaveBaselines=row.get("brainwave_baselines") or {},
     )
@@ -36,6 +38,8 @@ def upsert_profile(user_id: str, body: UpsertUserProfileRequest) -> UserProfile:
     payload = {
         "id": user_id,
         "name": p.name,
+        "spotify_display_name": p.spotifyDisplayName,
+        "spotify_email": p.spotifyEmail,
         "calibration_complete": p.calibrationComplete,
         "brainwave_baselines": p.brainwaveBaselines.model_dump(),
     }

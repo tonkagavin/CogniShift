@@ -27,6 +27,7 @@ export function DashboardRoute() {
   const recorder = useMemo(() => new SongProfileRecorder({ minListenMs: 30_000 }), []);
   const { upsertProfile, listProfiles } = useSongProfileStore();
   const [queue, setQueue] = useState<QueueEntry[]>([]);
+  const [simStatus, setSimStatus] = useState<string | null>(null);
 
   useEffect(() => {
     void initPlayer().catch((e) => {
@@ -118,6 +119,31 @@ export function DashboardRoute() {
                 Disconnect EEG
               </button>
             )}
+            <button
+              className="btn"
+              onClick={async () => {
+                const backend = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+                setSimStatus("Running backend simulation...");
+                try {
+                  const res = await fetch(`${backend}/simulations/mock-eeg/run`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ durationSec: 20 }),
+                  });
+                  const data = (await res.json()) as
+                    | { status: string; picklePath: string; csvPath: string }
+                    | { detail: string };
+                  if (!res.ok) throw new Error("detail" in data ? data.detail : "Simulation failed");
+                  setSimStatus(
+                    `Simulation complete. Pickle: ${"picklePath" in data ? data.picklePath : "n/a"}`,
+                  );
+                } catch (e) {
+                  setSimStatus(`Simulation error: ${e instanceof Error ? e.message : String(e)}`);
+                }
+              }}
+            >
+              Run mock simulation (.pickle)
+            </button>
           </div>
           <p className="muted" style={{ marginTop: 10 }}>
             {eeg.snapshot
@@ -125,6 +151,11 @@ export function DashboardRoute() {
               : "No signal yet"}
             {eeg.gestureDetected ? ` · gesture ${eeg.gestureDetected.type}` : ""}
           </p>
+          {simStatus ? (
+            <p className="muted" style={{ marginTop: 8 }}>
+              {simStatus}
+            </p>
+          ) : null}
         </div>
 
         <div className="card">

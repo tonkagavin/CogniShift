@@ -1,7 +1,10 @@
 import { Link } from "react-router-dom";
 import { Page } from "./_layout";
+import { useSpotifyStore } from "../state/spotifyStore";
 
 export function LandingRoute() {
+  const loginSpotify = useSpotifyStore((s) => s.login);
+
   return (
     <Page title="Landing / Onboarding">
       <div className="card">
@@ -13,9 +16,9 @@ export function LandingRoute() {
           <Link className="btn primary" to="/dashboard">
             Go to dashboard
           </Link>
-          <Link className="btn" to="/signup">
-            Create account
-          </Link>
+          <button className="btn" onClick={() => void loginSpotify()}>
+            Connect Spotify
+          </button>
         </div>
       </div>
     </Page>

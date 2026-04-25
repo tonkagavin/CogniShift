@@ -46,7 +46,38 @@ class SongProfile(BaseModel):
 class UserProfile(BaseModel):
     id: str
     name: Optional[str] = None
+    spotifyDisplayName: Optional[str] = None
+    spotifyEmail: Optional[str] = None
     calibrationComplete: bool = False
     brainwaveBaselines: BandPowerProfile = Field(default_factory=BandPowerProfile)
     # For v1, we keep musicMoodMap/listeningHistory minimal in API; expand as needed.
+
+
+class EegArtifactEvent(BaseModel):
+    tsMs: int
+    artifactType: str
+    confidence: float = 0.0
+    durationMs: int = 0
+    channel: Optional[str] = None
+    peakAmplitude: Optional[float] = None
+    payload: dict = Field(default_factory=dict)
+
+
+class EegStreamSessionCreateRequest(BaseModel):
+    userId: str
+    source: str = "mock"
+    sampleRateHz: Optional[int] = None
+    meta: dict = Field(default_factory=dict)
+
+
+class EegStreamSessionCloseRequest(BaseModel):
+    endedAtIso: Optional[str] = None
+
+
+class EegSnapshotIngestRequest(BaseModel):
+    snapshots: list[dict]
+
+
+class EegArtifactsIngestRequest(BaseModel):
+    events: list[EegArtifactEvent]
 

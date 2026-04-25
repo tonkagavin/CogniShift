@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { LandingRoute } from "../routes/LandingRoute";
-import { SignupRoute } from "../routes/SignupRoute";
 import { CalibrateRoute } from "../routes/CalibrateRoute";
 import { DashboardRoute } from "../routes/DashboardRoute";
 import { ProfileRoute } from "../routes/ProfileRoute";
@@ -12,7 +11,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<LandingRoute />} />
-      <Route path="/signup" element={<SignupRoute />} />
+      <Route path="/signup" element={<Navigate to="/" replace />} />
       <Route path="/calibrate" element={<CalibrateRoute />} />
       <Route path="/dashboard" element={<DashboardRoute />} />
       <Route path="/profile" element={<ProfileRoute />} />

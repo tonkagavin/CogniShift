@@ -5,8 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+from app.routes.eeg_stream import router as eeg_stream_router
 from app.routes.profiles import router as profiles_router
 from app.routes.song_profiles import router as song_profiles_router
+from app.routes.simulations import router as simulations_router
 from app.routes.spotify_auth import router as spotify_auth_router
 
 
@@ -31,7 +33,9 @@ def create_app() -> FastAPI:
 
     app.include_router(profiles_router)
     app.include_router(song_profiles_router)
+    app.include_router(eeg_stream_router)
     app.include_router(spotify_auth_router)
+    app.include_router(simulations_router)
 
     return app
 
