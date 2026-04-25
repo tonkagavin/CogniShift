@@ -3,12 +3,15 @@ from __future__ import annotations
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
 from app.routes.profiles import router as profiles_router
 from app.routes.song_profiles import router as song_profiles_router
+from app.routes.spotify_auth import router as spotify_auth_router
 
 
 def create_app() -> FastAPI:
+    load_dotenv()
     app = FastAPI(title="CogniShift API", version="0.1.0")
 
     allowed_origins = [
@@ -28,6 +31,7 @@ def create_app() -> FastAPI:
 
     app.include_router(profiles_router)
     app.include_router(song_profiles_router)
+    app.include_router(spotify_auth_router)
 
     return app
 

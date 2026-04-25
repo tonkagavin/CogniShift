@@ -1,5 +1,3 @@
-import { SPOTIFY_AUTH_BASE } from "./constants";
-import { getSpotifyClientId, getSpotifyRedirectUri } from "./auth";
 import type { SpotifyTokenSet } from "./tokenStorage";
 
 type TokenResponse = {
@@ -10,30 +8,26 @@ type TokenResponse = {
   refresh_token?: string;
 };
 
-async function postForm(path: string, body: Record<string, string>): Promise<TokenResponse> {
-  const res = await fetch(`${SPOTIFY_AUTH_BASE}${path}`, {
+const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
+async function postJson(path: string, body: Record<string, string>): Promise<TokenResponse> {
+  const res = await fetch(`${backendUrl}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body).toString(),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Spotify token request failed (${res.status}): ${text}`);
+    throw new Error(`Backend spotify token request failed (${res.status}): ${text}`);
   }
 
   return (await res.json()) as TokenResponse;
 }
 
 export async function exchangeCodeForToken(code: string, verifier: string): Promise<SpotifyTokenSet> {
-  const clientId = getSpotifyClientId();
-  const redirectUri = getSpotifyRedirectUri();
-
-  const token = await postForm("/api/token", {
-    grant_type: "authorization_code",
-    client_id: clientId,
+  const token = await postJson("/spotify/token/exchange", {
     code,
-    redirect_uri: redirectUri,
     code_verifier: verifier,
   });
 
@@ -41,11 +35,7 @@ export async function exchangeCodeForToken(code: string, verifier: string): Prom
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<SpotifyTokenSet> {
-  const clientId = getSpotifyClientId();
-
-  const token = await postForm("/api/token", {
-    grant_type: "refresh_token",
-    client_id: clientId,
+  const token = await postJson("/spotify/token/refresh", {
     refresh_token: refreshToken,
   });
 

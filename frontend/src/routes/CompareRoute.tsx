@@ -23,18 +23,19 @@ export function CompareRoute() {
   });
 
   useEffect(() => {
-    if (!eeg.snapshot) return;
+    const live = eeg.snapshot;
+    if (!live) return;
     if (allProfiles.length === 0) return;
 
     const bw = recommendQueue({
-      live: eeg.snapshot,
+      live,
       profiles: allProfiles,
       targetState: "focus",
       recentTrackIds: [],
       limit: 5,
     }).map((q) => ({
       ...q,
-      predictedAlignment: alignmentScore(eeg.snapshot!, q.songProfile),
+      predictedAlignment: alignmentScore(live, q.songProfile),
     }));
 
     const rnd = buildRandomShadowQueue({
@@ -45,7 +46,7 @@ export function CompareRoute() {
       return {
         ...q,
         songProfile: p,
-        predictedAlignment: alignmentScore(eeg.snapshot!, p),
+        predictedAlignment: alignmentScore(live, p),
       };
     });
 
@@ -54,14 +55,15 @@ export function CompareRoute() {
   }, [eeg.snapshot, allProfiles]);
 
   useEffect(() => {
-    if (!activeSession || !eeg.snapshot) return;
+    const live = eeg.snapshot;
+    if (!activeSession || !live) return;
     setActiveSession((s) =>
       s
         ? {
             ...s,
             brainwaveQueue,
             randomQueue,
-            eegTimeline: [...s.eegTimeline, eeg.snapshot].slice(-2400),
+            eegTimeline: [...s.eegTimeline, live].slice(-2400),
           }
         : s,
     );
