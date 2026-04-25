@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
-MentalState = Literal["focus", "flow", "relax", "sleep"]
+MentalState = Literal["focused", "happy", "relaxed", "sleepy", "sad", "neutral"]
 
 
 class BandPowerProfile(BaseModel):

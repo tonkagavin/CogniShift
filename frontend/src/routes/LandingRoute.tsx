@@ -4,6 +4,7 @@ import { useSpotifyStore } from "../state/spotifyStore";
 
 export function LandingRoute() {
   const loginSpotify = useSpotifyStore((s) => s.login);
+  const lastError = useSpotifyStore((s) => s.lastError);
 
   return (
     <Page title="Landing / Onboarding">
@@ -20,6 +21,7 @@ export function LandingRoute() {
             Connect Spotify
           </button>
         </div>
+        {lastError ? <p className="muted">Spotify error: {lastError}</p> : null}
       </div>
     </Page>
   );

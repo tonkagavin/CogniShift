@@ -17,10 +17,10 @@ function clamp01(x: number): number {
 
 function dominantFromBands(s: Omit<BrainwaveSnapshot, "dominantState">): MentalState {
   const bands: Array<[MentalState, number]> = [
-    ["focus", s.gamma],
-    ["flow", (s.alpha + s.beta) / 2],
-    ["relax", s.alpha],
-    ["sleep", s.theta],
+    ["focused", s.gamma],
+    ["happy", (s.alpha + s.beta) / 2],
+    ["relaxed", s.alpha],
+    ["sleepy", s.theta],
   ];
   bands.sort((a, b) => b[1] - a[1]);
   return bands[0][0];
@@ -66,11 +66,11 @@ export function createMockEEGEmitter({
     const r = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
     if (r < 0.004 && now - lastJawMs > 800) {
       lastJawMs = now;
-      emit({ type: "gesture", gesture: "jaw_clench", timestamp: now });
+      emit({ type: "gesture", gesture: "jawClench", timestamp: now });
     }
     if (r > 0.996 && now - lastBlinkMs > 1200) {
       lastBlinkMs = now;
-      emit({ type: "gesture", gesture: "long_blink", timestamp: now });
+      emit({ type: "gesture", gesture: "longBlink", timestamp: now });
     }
   };
 

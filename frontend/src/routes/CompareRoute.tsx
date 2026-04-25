@@ -30,7 +30,7 @@ export function CompareRoute() {
     const bw = recommendQueue({
       live,
       profiles: allProfiles,
-      targetState: "focus",
+      targetState: "focused",
       recentTrackIds: [],
       limit: 5,
     }).map((q) => ({
@@ -114,7 +114,7 @@ export function CompareRoute() {
         <div className="row">
           {!eeg.isConnected ? (
             <button className="btn primary" onClick={eeg.connect}>
-              Connect EEG (mock)
+              Connect EEG Headset
             </button>
           ) : (
             <button className="btn" onClick={eeg.disconnect}>
@@ -132,7 +132,7 @@ export function CompareRoute() {
                   sessionId: crypto.randomUUID(),
                   startTime: now,
                   endTime: now,
-                  targetState: "focus",
+                  targetState: "focused",
                   brainwaveQueue,
                   randomQueue,
                   eegTimeline: [],
@@ -198,7 +198,7 @@ export function CompareRoute() {
 
         {allProfiles.length === 0 ? (
           <p className="muted" style={{ marginTop: 12 }}>
-            No song profiles yet. Go to Dashboard, connect EEG (mock), and play a track to start
+            No song profiles yet. Go to Dashboard, connect your EEG headset, and play a track to start
             building profiles.
           </p>
         ) : mode === "compare" ? (

@@ -51,6 +51,19 @@ function stateToTrack(s: SpotifyPlaybackState | null): PlayerTrack | null {
   };
 }
 
+async function waitForDeviceId(
+  getState: () => SpotifyStore,
+  timeoutMs = 5000,
+): Promise<string | null> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const id = getState().deviceId;
+    if (id) return id;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return getState().deviceId;
+}
+
 export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
   token: loadToken(),
   isAuthed: !!loadToken(),
@@ -65,7 +78,13 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
   isPaused: true,
 
   login: async () => {
-    await beginSpotifyLogin();
+    try {
+      await beginSpotifyLogin();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      set({ lastError: message });
+      throw e;
+    }
   },
 
   handleRedirectIfPresent: async () => {
@@ -165,6 +184,41 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
     if (!player) throw new Error("Player not initialized");
     const ok = await player.connect();
     set({ isConnected: ok });
+    if (!ok) return;
+
+    const deviceId = await waitForDeviceId(get);
+    if (!deviceId) {
+      set({
+        lastError:
+          "Spotify SDK connected, but the player device is not ready yet. Wait a moment and connect again.",
+      });
+      return;
+    }
+
+    const accessToken = await get().ensureValidToken();
+    const transferRes = await fetch("https://api.spotify.com/v1/me/player", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        device_ids: [deviceId],
+        play: true,
+      }),
+    });
+
+    if (!transferRes.ok) {
+      const detail = await transferRes.text().catch(() => "");
+      set({
+        lastError: `Connected, but failed to transfer playback (${transferRes.status})${detail ? `: ${detail}` : ""}`,
+      });
+      return;
+    }
+
+    // If user had no active playback context, transfer can succeed but state remains null
+    // until playback starts from any client/device.
+    set({ lastError: "Connected. If nothing starts, press play in Spotify once to seed playback." });
   },
 
   togglePlay: async () => {

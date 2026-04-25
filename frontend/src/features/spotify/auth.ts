@@ -15,10 +15,16 @@ export async function beginSpotifyLogin(): Promise<void> {
     `${backendUrl}/spotify/authorize-url?code_challenge=${encodeURIComponent(challenge)}&state=${encodeURIComponent(state)}`,
   );
   if (!res.ok) {
-    throw new Error("Failed to build Spotify authorize URL from backend");
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to build Spotify authorize URL from backend (${res.status})${detail ? `: ${detail}` : ""}`,
+    );
   }
   const payload = (await res.json()) as { authorizeUrl: string };
-  window.location.assign(payload.authorizeUrl);
+  if (!payload.authorizeUrl) {
+    throw new Error("Backend returned empty Spotify authorize URL");
+  }
+  window.location.href = payload.authorizeUrl;
 }
 
 export function readAuthCodeFromUrl(): { code: string; state: string } | null {

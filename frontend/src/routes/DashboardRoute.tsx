@@ -7,6 +7,9 @@ import { SongProfileRecorder } from "../features/profiling/SongProfileRecorder";
 import { useMemo, useState } from "react";
 import { useSongProfileStore } from "../state/songProfileStore";
 import { recommendQueue, type QueueEntry } from "../features/queue/recommender";
+import { useSupabaseAuthStore } from "../state/supabaseAuthStore";
+import { ingestSongProfileSession } from "../features/profiling/profileApi";
+import { EEGVisualizer } from "../components/EEGVisualizer";
 
 export function DashboardRoute() {
   const {
@@ -26,8 +29,9 @@ export function DashboardRoute() {
   const eeg = useEEG();
   const recorder = useMemo(() => new SongProfileRecorder({ minListenMs: 30_000 }), []);
   const { upsertProfile, listProfiles } = useSongProfileStore();
+  const user = useSupabaseAuthStore((s) => s.user);
   const [queue, setQueue] = useState<QueueEntry[]>([]);
-  const [simStatus, setSimStatus] = useState<string | null>(null);
+  const [eegHistory, setEegHistory] = useState<typeof eeg.snapshot[]>([]);
 
   useEffect(() => {
     void initPlayer().catch((e) => {
@@ -39,14 +43,13 @@ export function DashboardRoute() {
   useEffect(() => {
     if (!eeg.isConnected || !eeg.snapshot) return;
     recorder.pushSnapshot(eeg.snapshot);
+    setEegHistory((prev) => [...prev, eeg.snapshot].slice(-60));
   }, [eeg.isConnected, eeg.snapshot, recorder]);
 
   useEffect(() => {
     const trackId = currentTrack?.trackId;
-    if (!trackId || !eeg.snapshot) return;
+    if (!trackId) return;
 
-    // Very simple: when track changes, stop previous session and start new.
-    // (We’ll later wire this to actual playback start/end + 2s sampling cadence.)
     const previous = listProfiles().find((p) => p.trackId === trackId);
     recorder.start({
       trackId,
@@ -56,24 +59,49 @@ export function DashboardRoute() {
 
     return () => {
       const built = recorder.stopAndBuildProfile(previous);
-      if (built) upsertProfile(built);
+      if (!built) return;
+      upsertProfile(built);
+      if (!user?.id) return;
+      void ingestSongProfileSession({
+        userId: user.id,
+        trackId: built.trackId,
+        trackName: built.trackName,
+        artist: built.artist,
+        sessionSnapshots: built.eegSessions.at(-1)?.snapshots ?? [],
+      }).catch((e) => {
+        console.error("Song profile ingest failed", e);
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrack?.trackId]);
+  }, [currentTrack?.trackId, user?.id]);
 
   useEffect(() => {
-    if (!eeg.snapshot) return;
-    const profiles = listProfiles();
-    if (profiles.length === 0) return;
-    const nextQueue = recommendQueue({
-      live: eeg.snapshot,
-      profiles,
-      targetState: "focus",
-      recentTrackIds: currentTrack?.trackId ? [currentTrack.trackId] : [],
-      limit: 5,
-    });
-    setQueue(nextQueue);
+    const run = () => {
+      if (!eeg.snapshot) return;
+      const profiles = listProfiles();
+      if (profiles.length === 0) return;
+      const nextQueue = recommendQueue({
+        live: eeg.snapshot,
+        profiles,
+        targetState: eeg.snapshot.dominantState ?? "focused",
+        recentTrackIds: currentTrack?.trackId ? [currentTrack.trackId] : [],
+        limit: 5,
+      });
+      setQueue(nextQueue);
+    };
+    run();
+    const id = window.setInterval(run, 30_000);
+    return () => window.clearInterval(id);
   }, [eeg.snapshot, currentTrack?.trackId, listProfiles]);
+
+  useEffect(() => {
+    if (!eeg.gestureDetected) return;
+    if (eeg.gestureDetected.type === "jawClench") {
+      void next();
+    } else if (eeg.gestureDetected.type === "longBlink") {
+      void togglePlay();
+    }
+  }, [eeg.gestureDetected, next, togglePlay]);
 
   return (
     <Page title="Dashboard">
@@ -108,54 +136,26 @@ export function DashboardRoute() {
         />
 
         <div className="card">
-          <div className="cardTitle">Live EEG (placeholder)</div>
+          <div className="cardTitle">Live EEG</div>
           <div className="row">
             {!eeg.isConnected ? (
               <button className="btn primary" onClick={eeg.connect}>
-                Connect EEG (mock)
+                Connect EEG Headset
               </button>
             ) : (
               <button className="btn" onClick={eeg.disconnect}>
                 Disconnect EEG
               </button>
             )}
-            <button
-              className="btn"
-              onClick={async () => {
-                const backend = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
-                setSimStatus("Running backend simulation...");
-                try {
-                  const res = await fetch(`${backend}/simulations/mock-eeg/run`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ durationSec: 20 }),
-                  });
-                  const data = (await res.json()) as
-                    | { status: string; picklePath: string; csvPath: string }
-                    | { detail: string };
-                  if (!res.ok) throw new Error("detail" in data ? data.detail : "Simulation failed");
-                  setSimStatus(
-                    `Simulation complete. Pickle: ${"picklePath" in data ? data.picklePath : "n/a"}`,
-                  );
-                } catch (e) {
-                  setSimStatus(`Simulation error: ${e instanceof Error ? e.message : String(e)}`);
-                }
-              }}
-            >
-              Run mock simulation (.pickle)
-            </button>
           </div>
           <p className="muted" style={{ marginTop: 10 }}>
             {eeg.snapshot
               ? `γ ${eeg.snapshot.gamma.toFixed(2)} · β ${eeg.snapshot.beta.toFixed(2)} · α ${eeg.snapshot.alpha.toFixed(2)} · θ ${eeg.snapshot.theta.toFixed(2)} · state ${eeg.snapshot.dominantState}`
               : "No signal yet"}
             {eeg.gestureDetected ? ` · gesture ${eeg.gestureDetected.type}` : ""}
+            {eeg.estimatedMode ? " · Estimated Mode" : ""}
           </p>
-          {simStatus ? (
-            <p className="muted" style={{ marginTop: 8 }}>
-              {simStatus}
-            </p>
-          ) : null}
+          <EEGVisualizer snapshot={eeg.snapshot} history={eegHistory.filter(Boolean) as NonNullable<typeof eeg.snapshot>[]} />
         </div>
 
         <div className="card">
@@ -172,6 +172,8 @@ export function DashboardRoute() {
                   <span style={{ fontWeight: 650 }}>{q.trackName}</span>{" "}
                   <span className="muted">
                     · {(q.predictedAlignment * 100).toFixed(0)}% · {q.matchBand}
+                    {q.songProfile && q.songProfile.listenCount < 2 ? " · Low confidence" : " · Profiled"}
+                    {eeg.estimatedMode ? " · Estimated" : ""}
                   </span>
                 </li>
               ))}
