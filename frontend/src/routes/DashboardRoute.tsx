@@ -16,6 +16,7 @@ export function DashboardRoute() {
     isAuthed,
     isConnected,
     isReady,
+    isPremiumReady,
     lastError,
     currentTrack,
     isPaused,
@@ -68,6 +69,7 @@ export function DashboardRoute() {
         trackName: built.trackName,
         artist: built.artist,
         sessionSnapshots: built.eegSessions.at(-1)?.snapshots ?? [],
+        profile: built,
       }).catch((e) => {
         console.error("Song profile ingest failed", e);
       });
@@ -76,23 +78,52 @@ export function DashboardRoute() {
   }, [currentTrack?.trackId, user?.id]);
 
   useEffect(() => {
-    const run = () => {
+    const run = async () => {
       if (!eeg.snapshot) return;
       const profiles = listProfiles();
+      const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "http://127.0.0.1:8000";
+      if (user?.id) {
+        const params = new URLSearchParams({
+          userId: user.id,
+          targetState: eeg.snapshot.dominantState ?? "focused",
+          currentTrackId: currentTrack?.trackId ?? "",
+          currentArtist: currentTrack?.artist ?? "",
+        });
+        const res = await fetch(`${backendUrl}/api/queue/predict?${params.toString()}`).catch(() => null);
+        if (res?.ok) {
+          const payload = (await res.json()) as { queue?: Array<Record<string, unknown>> };
+          if (payload.queue?.length) {
+            setQueue(
+              payload.queue.map((q) => ({
+                trackId: String(q.trackId ?? ""),
+                trackName: String(q.trackName ?? "Unknown"),
+                artist: String(q.artist ?? ""),
+                source: (String(q.source ?? "profile") as QueueEntry["source"]),
+                predictedAlignment: Number(q.matchScore ?? 0),
+                matchBand: (String(q.matchBand ?? "alpha").toLowerCase() as QueueEntry["matchBand"]),
+                isDiscovery: Boolean(q.isDiscovery),
+                estimated: eeg.estimatedMode,
+              })),
+            );
+            return;
+          }
+        }
+      }
       if (profiles.length === 0) return;
-      const nextQueue = recommendQueue({
-        live: eeg.snapshot,
-        profiles,
-        targetState: eeg.snapshot.dominantState ?? "focused",
-        recentTrackIds: currentTrack?.trackId ? [currentTrack.trackId] : [],
-        limit: 5,
-      });
-      setQueue(nextQueue);
+      setQueue(
+        recommendQueue({
+          live: eeg.snapshot,
+          profiles,
+          targetState: eeg.snapshot.dominantState ?? "focused",
+          recentTrackIds: currentTrack?.trackId ? [currentTrack.trackId] : [],
+          limit: 5,
+        }),
+      );
     };
-    run();
+    void run();
     const id = window.setInterval(run, 30_000);
     return () => window.clearInterval(id);
-  }, [eeg.snapshot, currentTrack?.trackId, listProfiles]);
+  }, [eeg.snapshot, eeg.estimatedMode, currentTrack?.artist, currentTrack?.trackId, listProfiles, user?.id]);
 
   useEffect(() => {
     if (!eeg.gestureDetected) return;
@@ -106,6 +137,14 @@ export function DashboardRoute() {
   return (
     <Page title="Dashboard">
       <div className="grid">
+        {isPremiumReady === false ? (
+          <div className="card" style={{ borderColor: "#ef4444", background: "rgba(127, 29, 29, 0.25)" }}>
+            <div className="cardTitle">Playback unavailable</div>
+            <p className="muted">
+              CogniShift requires a Spotify Premium account for playback.
+            </p>
+          </div>
+        ) : null}
         <SdkPlayer
           isConnected={isConnected}
           deviceName="Spotify Web Playback SDK"
@@ -170,7 +209,7 @@ export function DashboardRoute() {
         </div>
 
         <div className="card">
-          <div className="cardTitle">Predicted queue (placeholder)</div>
+          <div className="cardTitle">Predicted queue</div>
           {queue.length === 0 ? (
             <p className="muted">
               Listen to a track with EEG connected to generate song profiles, then the queue will
@@ -182,9 +221,11 @@ export function DashboardRoute() {
                 <li key={q.trackId} style={{ margin: "6px 0" }}>
                   <span style={{ fontWeight: 650 }}>{q.trackName}</span>{" "}
                   <span className="muted">
-                    · {(q.predictedAlignment * 100).toFixed(0)}% · {q.matchBand}
-                    {q.songProfile && q.songProfile.listenCount < 2 ? " · Low confidence" : " · Profiled"}
-                    {eeg.estimatedMode ? " · Estimated" : ""}
+                    {q.artist ? `· ${q.artist} ` : ""}
+                    · {(q.matchBand ?? "alpha").toUpperCase()} {(q.predictedAlignment * 100).toFixed(0)}%
+                    {q.songProfile && q.songProfile.listenCount < 2 ? " · Low confidence" : ""}
+                    {q.isDiscovery ? " · New" : ""}
+                    {q.estimated ? " · Est." : ""}
                   </span>
                 </li>
               ))}

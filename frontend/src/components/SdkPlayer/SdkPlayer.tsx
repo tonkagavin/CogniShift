@@ -54,7 +54,7 @@ export function SdkPlayer({
         <div className={styles.buttons}>
           {!isConnected ? (
             <button className={`${styles.button} ${styles.primary}`} onClick={onConnect}>
-              Connect
+              Connect Player
             </button>
           ) : (
             <>

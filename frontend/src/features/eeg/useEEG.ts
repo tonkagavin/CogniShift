@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BrainwaveSnapshot, GestureType } from "./types";
+import { useSupabaseAuthStore } from "../../state/supabaseAuthStore";
+import { assertSupabaseConfigured } from "../supabase/client";
 
 export type UseEEGState = {
   isConnected: boolean;
@@ -16,6 +18,8 @@ export type UseEEGState = {
 
 export function useEEG(): UseEEGState {
   const wsUrl = import.meta.env.VITE_EEG_WS_URL ?? "ws://127.0.0.1:8000/ws/eeg";
+  const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "http://127.0.0.1:8000";
+  const user = useSupabaseAuthStore((s) => s.user);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [snapshot, setSnapshot] = useState<BrainwaveSnapshot | null>(null);
@@ -71,94 +75,116 @@ export function useEEG(): UseEEGState {
 
   const connect = () => {
     if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) return;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    ws.onopen = () => {
-      setHardwareError(null);
-      setStreamStatus("Connecting to EEG backend…");
-      setIsConnected(false);
-      setEstimatedMode(true);
-    };
-    ws.onerror = () => {
-      setIsConnected(false);
-      setEstimatedMode(true);
-      setStreamStatus(null);
-      setHardwareError("WebSocket error (is backend running and CORS/URL correct?)");
-      setSnapshot(inferEstimatedState());
-    };
-    ws.onclose = () => {
-      setIsConnected(false);
-      setEstimatedMode(true);
-      setStreamStatus(null);
-      setSnapshot(inferEstimatedState());
-    };
-    ws.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data) as BrainwaveSnapshot & {
-          type?: string;
-          message?: string;
-          hint?: string;
-          sampleWindowSeconds?: number;
-          minIntervalSeconds?: number;
-        };
-        if (payload.type === "eeg_ready") {
+    void (async () => {
+      const supabase = assertSupabaseConfigured();
+      const { data: profile } = user?.id
+        ? await supabase
+            .from("user_profiles")
+            .select("brainwave_baselines")
+            .eq("id", user.id)
+            .maybeSingle()
+        : { data: null };
+      const b = (profile?.brainwave_baselines as Record<string, number> | undefined) ?? {};
+      const thresholds = {
+        jaw_clench_threshold: Number(b.jaw_clench_threshold ?? 150),
+        blink_amplitude_threshold: Number(b.blink_amplitude_threshold ?? 100),
+        blink_duration_threshold_ms: Number(b.blink_duration_threshold_ms ?? 500),
+      };
+      await fetch(`${backendUrl}/api/eeg/thresholds`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(thresholds),
+      }).catch(() => undefined);
+
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.onopen = () => {
+        setHardwareError(null);
+        setStreamStatus("Connecting to EEG backend…");
+        setIsConnected(false);
+        setEstimatedMode(true);
+      };
+      ws.onerror = () => {
+        setIsConnected(false);
+        setEstimatedMode(true);
+        setStreamStatus(null);
+        setHardwareError("WebSocket error (is backend running and CORS/URL correct?)");
+        setSnapshot(inferEstimatedState());
+      };
+      ws.onclose = () => {
+        setIsConnected(false);
+        setEstimatedMode(true);
+        setStreamStatus(null);
+        setSnapshot(inferEstimatedState());
+      };
+      ws.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data) as BrainwaveSnapshot & {
+            type?: string;
+            message?: string;
+            hint?: string;
+            sampleWindowSeconds?: number;
+            minIntervalSeconds?: number;
+          };
+          if (payload.type === "eeg_ready") {
+            setHardwareError(null);
+            const minInt = payload.minIntervalSeconds ?? Math.max(1, payload.sampleWindowSeconds ?? 2);
+            setStreamStatus(
+              `${payload.message ?? "EEG stream ready."} (snapshots every ~${minInt}s once the buffer has samples)`,
+            );
+            setIsConnected(true);
+            setEstimatedMode(false);
+            return;
+          }
+          if (payload.type === "eeg_error") {
+            const cfg =
+              "config" in payload && payload.config && typeof payload.config === "object"
+                ? JSON.stringify(payload.config as Record<string, unknown>)
+                : "";
+            const msg = [payload.message, cfg || null, payload.hint].filter(Boolean).join(" — ");
+            setHardwareError(msg || "EEG hardware error");
+            setIsConnected(false);
+            setEstimatedMode(true);
+            setStreamStatus(null);
+            setSnapshot({
+              ...inferEstimatedState(),
+              type: "eeg_error",
+              message: payload.message,
+              hint: payload.hint,
+              device: "hardware_error",
+            });
+            return;
+          }
+          const normalized: BrainwaveSnapshot = {
+            ...payload,
+            timestamp:
+              typeof payload.timestamp === "number" && payload.timestamp < 1e12
+                ? Math.floor(payload.timestamp * 1000)
+                : payload.timestamp,
+            dominantState: payload.detectedState ?? payload.dominantState ?? "relaxed",
+            theta: payload.theta ?? payload.bands?.theta ?? 0,
+            alpha: payload.alpha ?? payload.bands?.alpha ?? 0,
+            beta: payload.beta ?? payload.bands?.beta ?? 0,
+            gamma: payload.gamma ?? payload.bands?.gamma ?? 0,
+          };
           setHardwareError(null);
-          const minInt = payload.minIntervalSeconds ?? Math.max(1, payload.sampleWindowSeconds ?? 2);
-          setStreamStatus(
-            `${payload.message ?? "EEG stream ready."} (snapshots every ~${minInt}s once the buffer has samples)`,
-          );
+          setStreamStatus(null);
           setIsConnected(true);
           setEstimatedMode(false);
-          return;
+          setSnapshot(normalized);
+          if (normalized.gesture) {
+            const g = { type: normalized.gesture, timestamp: Date.now() };
+            lastGestureRef.current = g;
+            setGestureDetected(g);
+            window.setTimeout(() => {
+              if (lastGestureRef.current?.timestamp === g.timestamp) setGestureDetected(null);
+            }, 1200);
+          }
+        } catch {
+          // ignore malformed payload
         }
-        if (payload.type === "eeg_error") {
-          const cfg =
-            "config" in payload && payload.config && typeof payload.config === "object"
-              ? JSON.stringify(payload.config as Record<string, unknown>)
-              : "";
-          const msg = [payload.message, cfg || null, payload.hint].filter(Boolean).join(" — ");
-          setHardwareError(msg || "EEG hardware error");
-          setIsConnected(false);
-          setEstimatedMode(true);
-          setStreamStatus(null);
-          setSnapshot({
-            ...inferEstimatedState(),
-            type: "eeg_error",
-            message: payload.message,
-            hint: payload.hint,
-            device: "hardware_error",
-          });
-          return;
-        }
-        const normalized: BrainwaveSnapshot = {
-          ...payload,
-          timestamp:
-            typeof payload.timestamp === "number" && payload.timestamp < 1e12
-              ? Math.floor(payload.timestamp * 1000)
-              : payload.timestamp,
-          dominantState: payload.detectedState ?? payload.dominantState ?? "relaxed",
-          theta: payload.theta ?? payload.bands?.theta ?? 0,
-          alpha: payload.alpha ?? payload.bands?.alpha ?? 0,
-          beta: payload.beta ?? payload.bands?.beta ?? 0,
-          gamma: payload.gamma ?? payload.bands?.gamma ?? 0,
-        };
-        setHardwareError(null);
-        setStreamStatus(null);
-        setIsConnected(true);
-        setEstimatedMode(false);
-        setSnapshot(normalized);
-        if (normalized.gesture) {
-          const g = { type: normalized.gesture, timestamp: Date.now() };
-          lastGestureRef.current = g;
-          setGestureDetected(g);
-          window.setTimeout(() => {
-            if (lastGestureRef.current?.timestamp === g.timestamp) setGestureDetected(null);
-          }, 1200);
-        }
-      } catch {
-        // ignore malformed payload
-      }
-    };
+      };
+    })();
   };
 
   const disconnect = () => {

@@ -13,10 +13,13 @@ export type MusicPrediction = {
 export type QueueEntry = {
   trackId: string;
   trackName: string;
-  source: "brainwave" | "random";
+  artist?: string;
+  source: "brainwave" | "random" | "profile" | "lastfm";
   predictedAlignment: number; // 0..1
   songProfile?: SongProfile;
   matchBand?: MusicPrediction["matchBand"];
+  isDiscovery?: boolean;
+  estimated?: boolean;
 };
 
 function clamp01(x: number): number {

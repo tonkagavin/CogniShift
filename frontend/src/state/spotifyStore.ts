@@ -24,6 +24,7 @@ type SpotifyStore = {
   deviceId: string | null;
   isConnected: boolean;
   isReady: boolean;
+  isPremiumReady: boolean | null;
   lastError: string | null;
 
   currentTrack: PlayerTrack | null;
@@ -72,6 +73,7 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
   deviceId: null,
   isConnected: false,
   isReady: false,
+  isPremiumReady: null,
   lastError: null,
 
   currentTrack: null,
@@ -115,6 +117,7 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
       deviceId: null,
       isConnected: false,
       isReady: false,
+      isPremiumReady: null,
       currentTrack: null,
       isPaused: true,
       lastError: null,
@@ -154,19 +157,57 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
       volume: 0.8,
     });
 
-    const onReady = (payload: { device_id: string }) => {
+    const onReady = async (payload: { device_id: string }) => {
       set({ deviceId: payload.device_id, isReady: true, lastError: null });
+      try {
+        const accessToken = await get().ensureValidToken();
+        const transferRes = await fetch("https://api.spotify.com/v1/me/player", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            device_ids: [payload.device_id],
+            play: false,
+          }),
+        });
+        if (!transferRes.ok) {
+          const detail = await transferRes.text().catch(() => "");
+          set({
+            lastError: `Player ready, but failed to transfer playback (${transferRes.status})${detail ? `: ${detail}` : ""}`,
+          });
+        }
+      } catch (e) {
+        set({ lastError: e instanceof Error ? e.message : String(e) });
+      }
     };
-    const onNotReady = () => {
+    const onNotReady = (payload: { device_id: string }) => {
+      console.error("Device went offline:", payload.device_id);
       set({ isReady: false, isConnected: false });
     };
     const onState = (s: SpotifyPlaybackState) => {
       set({ currentTrack: stateToTrack(s), isPaused: s.paused });
     };
-    const onInitError = (e: { message: string }) => set({ lastError: e.message });
-    const onAuthError = (e: { message: string }) => set({ lastError: e.message, isAuthed: false });
-    const onAccountError = (e: { message: string }) => set({ lastError: e.message });
-    const onPlaybackError = (e: { message: string }) => set({ lastError: e.message });
+    const onInitError = (e: { message: string }) => {
+      console.error("Init error:", e.message);
+      set({ lastError: e.message });
+    };
+    const onAuthError = (e: { message: string }) => {
+      console.error("Auth error:", e.message);
+      set({ lastError: e.message, isAuthed: false });
+    };
+    const onAccountError = (e: { message: string }) => {
+      console.error("Account error:", e.message);
+      set({
+        lastError: `${e.message}. CogniShift requires a Spotify Premium account for playback`,
+        isPremiumReady: false,
+      });
+    };
+    const onPlaybackError = (e: { message: string }) => {
+      console.error("Playback error:", e.message);
+      set({ lastError: e.message });
+    };
 
     player.addListener("ready", onReady);
     player.addListener("not_ready", onNotReady);
@@ -186,39 +227,20 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
     set({ isConnected: ok });
     if (!ok) return;
 
-    const deviceId = await waitForDeviceId(get);
-    if (!deviceId) {
+    const state = await player.getCurrentState();
+    if (!state) {
+      console.error("Player not ready - confirm account is Spotify Premium");
       set({
-        lastError:
-          "Spotify SDK connected, but the player device is not ready yet. Wait a moment and connect again.",
+        isPremiumReady: false,
+        lastError: "CogniShift requires a Spotify Premium account for playback",
       });
       return;
     }
 
-    const accessToken = await get().ensureValidToken();
-    const transferRes = await fetch("https://api.spotify.com/v1/me/player", {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        device_ids: [deviceId],
-        play: true,
-      }),
+    set({
+      isPremiumReady: true,
+      lastError: "Connected. Open a track and press Play / Pause to start browser playback.",
     });
-
-    if (!transferRes.ok) {
-      const detail = await transferRes.text().catch(() => "");
-      set({
-        lastError: `Connected, but failed to transfer playback (${transferRes.status})${detail ? `: ${detail}` : ""}`,
-      });
-      return;
-    }
-
-    // If user had no active playback context, transfer can succeed but state remains null
-    // until playback starts from any client/device.
-    set({ lastError: "Connected. If nothing starts, press play in Spotify once to seed playback." });
   },
 
   togglePlay: async () => {
