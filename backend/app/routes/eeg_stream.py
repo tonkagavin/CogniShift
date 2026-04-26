@@ -50,12 +50,11 @@ def ingest_snapshots(session_id: str, body: EegSnapshotIngestRequest) -> dict:
             {
                 "session_id": session_id,
                 "ts_ms": int(s.get("timestamp", 0)),
-                "delta": s.get("delta"),
                 "theta": float(s.get("theta", 0)),
                 "alpha": float(s.get("alpha", 0)),
                 "beta": float(s.get("beta", 0)),
                 "gamma": float(s.get("gamma", 0)),
-                "dominant_state": s.get("dominantState", "flow"),
+                "dominant_state": s.get("dominantState", "flowState"),
                 "payload": s,
             }
         )

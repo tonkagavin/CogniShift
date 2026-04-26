@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
-MentalState = Literal["focused", "happy", "relaxed", "sleepy", "sad", "neutral"]
+MentalState = Literal["sleepy", "relaxed", "focused", "flowState"]
 
 
 class BandPowerProfile(BaseModel):
@@ -35,7 +35,7 @@ class SongProfile(BaseModel):
     listenCount: int = 0
     avgBandPower: BandPowerProfile = Field(default_factory=BandPowerProfile)
     peakBandPower: BandPowerProfile = Field(default_factory=BandPowerProfile)
-    dominantState: MentalState = "flow"
+    dominantState: MentalState = "flowState"
     engagementScore: float = 0.0
     valenceScore: float = 0.0
     stabilityScore: float = 0.0

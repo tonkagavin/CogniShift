@@ -23,7 +23,6 @@ class SongProfileSnapshot(BaseModel):
     beta: float | None = None
     alpha: float | None = None
     theta: float | None = None
-    delta: float | None = None
     dominantState: str | None = None
     detectedState: str | None = None
     bands: dict[str, float] | None = None
@@ -45,7 +44,7 @@ def _extract_band(snapshot: SongProfileSnapshot, key: str) -> float:
 
 
 def _state_of(snapshot: SongProfileSnapshot) -> str:
-    return snapshot.detectedState or snapshot.dominantState or "neutral"
+    return snapshot.detectedState or snapshot.dominantState or "relaxed"
 
 
 @router.get("/{user_id}", response_model=list[SongProfile])
@@ -89,7 +88,7 @@ def _ingest_song_profile(body: IngestSongProfileRequest) -> dict:
 
     bands = {}
     peaks = {}
-    for key in ("gamma", "beta", "alpha", "theta", "delta"):
+    for key in ("gamma", "beta", "alpha", "theta"):
         values = [_extract_band(s, key) for s in snapshots]
         bands[key] = float(np.mean(values))
         peaks[key] = float(np.max(values))

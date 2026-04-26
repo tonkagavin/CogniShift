@@ -41,7 +41,7 @@ export function dominantStateFromSnapshots(snapshots: BrainwaveSnapshot[]): Ment
   const counts = new Map<MentalState, number>();
   for (const s of snapshots) counts.set(s.dominantState, (counts.get(s.dominantState) ?? 0) + 1);
   const entries = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  return entries[0]?.[0] ?? "flow";
+  return entries[0]?.[0] ?? "flowState";
 }
 
 export function engagementScoreFromBands(avg: BandPowerProfile): number {

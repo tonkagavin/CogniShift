@@ -1,4 +1,4 @@
-export type MentalState = "focused" | "happy" | "relaxed" | "sleepy" | "sad" | "neutral";
+export type MentalState = "sleepy" | "relaxed" | "focused" | "flowState";
 
 export type BrainwaveSnapshot = {
   timestamp: number;
@@ -10,18 +10,16 @@ export type BrainwaveSnapshot = {
   device?: string;
   signalQuality?: number;
   bands?: {
-    delta: number;
     theta: number;
     alpha: number;
     beta: number;
     gamma: number;
   };
-  dominantBand?: "delta" | "theta" | "alpha" | "beta" | "gamma";
+  dominantBand?: "theta" | "alpha" | "beta" | "gamma";
   detectedState?: MentalState;
   engagementScore?: number;
   valenceScore?: number;
   gesture?: GestureType | null;
-  delta?: number;
   gamma: number;
   beta: number;
   alpha: number;

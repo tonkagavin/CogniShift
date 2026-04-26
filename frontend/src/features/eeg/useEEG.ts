@@ -30,9 +30,9 @@ export function useEEG(): UseEEGState {
     const now = new Date();
     const hour = now.getHours();
     const weekday = now.getDay();
-    let dominantState: BrainwaveSnapshot["dominantState"] = "neutral";
+    let dominantState: BrainwaveSnapshot["dominantState"] = "relaxed";
     if (hour >= 6 && hour < 12) dominantState = "focused";
-    else if (hour >= 12 && hour < 18) dominantState = "happy";
+    else if (hour >= 12 && hour < 18) dominantState = "flowState";
     else if (hour >= 18 && hour < 23) dominantState = "relaxed";
     else dominantState = "sleepy";
     // Weekend afternoons tend less focus-oriented.
@@ -43,23 +43,28 @@ export function useEEG(): UseEEGState {
       timestamp: Date.now(),
       device: "estimated",
       signalQuality: 0,
-      dominantBand: dominantState === "focused" ? "beta" : dominantState === "sleepy" ? "theta" : "alpha",
+      dominantBand:
+        dominantState === "flowState"
+          ? "gamma"
+          : dominantState === "focused"
+            ? "beta"
+            : dominantState === "sleepy"
+              ? "theta"
+              : "alpha",
       dominantState,
       detectedState: dominantState,
       bands: {
-        delta: dominantState === "sleepy" ? 1.5 : 0.4,
         theta: dominantState === "sleepy" ? 1.4 : 0.5,
         alpha: dominantState === "relaxed" ? 1.6 : 0.8,
-        beta: dominantState === "focused" || dominantState === "happy" ? 1.4 : 0.7,
-        gamma: dominantState === "focused" ? 1.2 : 0.6,
+        beta: dominantState === "focused" ? 1.4 : 0.7,
+        gamma: dominantState === "flowState" ? 1.4 : 0.6,
       },
-      delta: dominantState === "sleepy" ? 1.5 : 0.4,
       theta: dominantState === "sleepy" ? 1.4 : 0.5,
       alpha: dominantState === "relaxed" ? 1.6 : 0.8,
-      beta: dominantState === "focused" || dominantState === "happy" ? 1.4 : 0.7,
-      gamma: dominantState === "focused" ? 1.2 : 0.6,
-      engagementScore: dominantState === "focused" ? 1.8 : 0.8,
-      valenceScore: dominantState === "happy" ? 1.4 : 0.9,
+      beta: dominantState === "focused" ? 1.4 : 0.7,
+      gamma: dominantState === "flowState" ? 1.4 : 0.6,
+      engagementScore: dominantState === "focused" || dominantState === "flowState" ? 1.8 : 0.8,
+      valenceScore: dominantState === "relaxed" ? 1.2 : 0.9,
       gesture: null,
     };
   };
@@ -131,8 +136,7 @@ export function useEEG(): UseEEGState {
             typeof payload.timestamp === "number" && payload.timestamp < 1e12
               ? Math.floor(payload.timestamp * 1000)
               : payload.timestamp,
-          dominantState: payload.detectedState ?? payload.dominantState ?? "neutral",
-          delta: payload.delta ?? payload.bands?.delta ?? 0,
+          dominantState: payload.detectedState ?? payload.dominantState ?? "relaxed",
           theta: payload.theta ?? payload.bands?.theta ?? 0,
           alpha: payload.alpha ?? payload.bands?.alpha ?? 0,
           beta: payload.beta ?? payload.bands?.beta ?? 0,

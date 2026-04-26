@@ -17,8 +17,8 @@ function clamp01(x: number): number {
 
 function dominantFromBands(s: Omit<BrainwaveSnapshot, "dominantState">): MentalState {
   const bands: Array<[MentalState, number]> = [
-    ["focused", s.gamma],
-    ["happy", (s.alpha + s.beta) / 2],
+    ["flowState", s.gamma],
+    ["focused", s.beta],
     ["relaxed", s.alpha],
     ["sleepy", s.theta],
   ];

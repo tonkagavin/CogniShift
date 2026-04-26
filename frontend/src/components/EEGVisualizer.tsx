@@ -5,9 +5,14 @@ type Props = {
   history: BrainwaveSnapshot[];
 };
 
-const BAND_ORDER = ["delta", "theta", "alpha", "beta", "gamma"] as const;
+const BAND_ORDER = ["theta", "alpha", "beta", "gamma"] as const;
+const BAND_LABELS: Record<(typeof BAND_ORDER)[number], string> = {
+  theta: "Theta (Sleepy)",
+  alpha: "Alpha (Relaxed)",
+  beta: "Beta (Focused)",
+  gamma: "Gamma (Flow State)",
+};
 const BAND_COLORS: Record<(typeof BAND_ORDER)[number], string> = {
-  delta: "#7c3aed",
   theta: "#2563eb",
   alpha: "#06b6d4",
   beta: "#22c55e",
@@ -45,8 +50,8 @@ export function EEGVisualizer({ snapshot, history }: Props) {
           const raw = snapshot?.[band] ?? snapshot?.bands?.[band] ?? 0;
           const pct = Math.max(0, Math.min(100, (raw / maxBand) * 100));
           return (
-            <div key={band} style={{ display: "grid", gridTemplateColumns: "60px 1fr 56px", gap: 8 }}>
-              <span className="muted">{band}</span>
+            <div key={band} style={{ display: "grid", gridTemplateColumns: "132px 1fr 56px", gap: 8 }}>
+              <span className="muted">{BAND_LABELS[band]}</span>
               <div style={{ background: "#1f2937", borderRadius: 999, overflow: "hidden", height: 10 }}>
                 <div
                   style={{

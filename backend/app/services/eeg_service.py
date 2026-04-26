@@ -212,16 +212,15 @@ def get_band_powers(data: np.ndarray, board_id: int) -> dict[str, float]:
     sample_rate = BoardShim.get_sampling_rate(board_id)
     eeg_rows = _bandpower_eeg_rows(board_id)
     if not eeg_rows:
-        return {"delta": 0.0, "theta": 0.0, "alpha": 0.0, "beta": 0.0, "gamma": 0.0}
+        return {"theta": 0.0, "alpha": 0.0, "beta": 0.0, "gamma": 0.0}
     # Require enough samples for stable PSD/bandpower estimation.
     if data.shape[1] < max(64, sample_rate):
-        return {"delta": 0.0, "theta": 0.0, "alpha": 0.0, "beta": 0.0, "gamma": 0.0}
+        return {"theta": 0.0, "alpha": 0.0, "beta": 0.0, "gamma": 0.0}
 
     # Prefer BrainFlow's averaged bandpower helper.
     try:
         avg, _std = DataFilter.get_avg_band_powers(data, eeg_rows, sample_rate, True)
         return {
-            "delta": float(avg[0]),
             "theta": float(avg[1]),
             "alpha": float(avg[2]),
             "beta": float(avg[3]),
@@ -249,7 +248,6 @@ def get_band_powers(data: np.ndarray, board_id: int) -> dict[str, float]:
         )
         band_powers.append(
             {
-                "delta": _safe_band_power(ch, sample_rate, 0.5, 4.0),
                 "theta": _safe_band_power(ch, sample_rate, 4.0, 8.0),
                 "alpha": _safe_band_power(ch, sample_rate, 8.0, 13.0),
                 "beta": _safe_band_power(ch, sample_rate, 13.0, 30.0),
@@ -258,36 +256,24 @@ def get_band_powers(data: np.ndarray, board_id: int) -> dict[str, float]:
         )
 
     if not band_powers:
-        return {"delta": 0.0, "theta": 0.0, "alpha": 0.0, "beta": 0.0, "gamma": 0.0}
+        return {"theta": 0.0, "alpha": 0.0, "beta": 0.0, "gamma": 0.0}
 
     return {
         band: float(np.mean([ch[band] for ch in band_powers]))
-        for band in ("delta", "theta", "alpha", "beta", "gamma")
+        for band in ("theta", "alpha", "beta", "gamma")
     }
 
 
 def classify_mental_state(bands: dict[str, float]) -> str:
-    gamma = bands["gamma"]
-    beta = bands["beta"]
-    alpha = bands["alpha"]
-    theta = bands["theta"]
-
-    engagement = gamma / (theta + 0.001)
-    relaxation = alpha / (beta + 0.001)
-    drowsiness = theta / (beta + 0.001)
-    valence = alpha / (beta + gamma + 0.001)
-
-    if engagement > 2.5:
-        return "focused"
-    if relaxation > 1.8 and valence > 0.6:
-        return "happy"
-    if drowsiness > 2.0:
-        return "sleepy"
-    if relaxation > 1.4:
-        return "relaxed"
-    if engagement < 0.8 and relaxation < 1.0:
-        return "sad"
-    return "neutral"
+    # Four-category mapping requested:
+    # theta->sleepy, alpha->relaxed, beta->focused, gamma->flowState
+    band_scores = {
+        "sleepy": float(bands["theta"]),
+        "relaxed": float(bands["alpha"]),
+        "focused": float(bands["beta"]),
+        "flowState": float(bands["gamma"]),
+    }
+    return max(band_scores, key=band_scores.get)
 
 
 def detect_gesture(channel_data: np.ndarray, sample_rate: int) -> str | None:
@@ -391,6 +377,5 @@ def build_snapshot(data: np.ndarray, board_id: int) -> dict[str, Any]:
         "beta": bands["beta"],
         "alpha": bands["alpha"],
         "theta": bands["theta"],
-        "delta": bands["delta"],
         "dominantState": state,
     }
