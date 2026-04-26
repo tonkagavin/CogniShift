@@ -8,6 +8,7 @@ create table if not exists public.user_profiles (
   spotify_email text,
   calibration_complete boolean not null default false,
   brainwave_baselines jsonb not null default '{}'::jsonb,
+  target_states jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -79,4 +80,34 @@ create index if not exists idx_shuffle_sessions_user_id on public.shuffle_compar
 create index if not exists idx_eeg_stream_sessions_user_id on public.eeg_stream_sessions(user_id);
 create index if not exists idx_eeg_stream_snapshots_session_id on public.eeg_stream_snapshots(session_id);
 create index if not exists idx_eeg_artifact_events_session_id on public.eeg_artifact_events(session_id);
+
+-- RLS policies: users can access only their own rows.
+alter table public.eeg_song_sessions enable row level security;
+alter table public.song_profiles enable row level security;
+alter table public.shuffle_comparison_sessions enable row level security;
+alter table public.user_profiles enable row level security;
+
+drop policy if exists "Users can manage their own eeg sessions" on public.eeg_song_sessions;
+create policy "Users can manage their own eeg sessions"
+on public.eeg_song_sessions for all
+using (auth.uid()::text = user_id)
+with check (auth.uid()::text = user_id);
+
+drop policy if exists "Users can manage their own song profiles" on public.song_profiles;
+create policy "Users can manage their own song profiles"
+on public.song_profiles for all
+using (auth.uid()::text = user_id)
+with check (auth.uid()::text = user_id);
+
+drop policy if exists "Users can manage their own comparison sessions" on public.shuffle_comparison_sessions;
+create policy "Users can manage their own comparison sessions"
+on public.shuffle_comparison_sessions for all
+using (auth.uid()::text = user_id)
+with check (auth.uid()::text = user_id);
+
+drop policy if exists "Users can manage their own profile" on public.user_profiles;
+create policy "Users can manage their own profile"
+on public.user_profiles for all
+using (auth.uid()::text = id)
+with check (auth.uid()::text = id);
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from app.models import (
     EegArtifactsIngestRequest,
@@ -11,8 +12,26 @@ from app.models import (
     EegStreamSessionCreateRequest,
 )
 from app.services.supabase_client import get_supabase_client
+from app.services.eeg_service import set_thresholds
 
 router = APIRouter(prefix="/eeg-stream", tags=["eeg-stream"])
+api_router = APIRouter(prefix="/api/eeg", tags=["eeg-thresholds"])
+
+
+class ThresholdUpdateRequest(BaseModel):
+    jaw_clench_threshold: float = 150.0
+    blink_amplitude_threshold: float = 100.0
+    blink_duration_threshold_ms: float = 500.0
+
+
+@api_router.post("/thresholds")
+def update_thresholds(body: ThresholdUpdateRequest) -> dict:
+    set_thresholds(
+        jaw=body.jaw_clench_threshold,
+        blink_amp=body.blink_amplitude_threshold,
+        blink_dur=body.blink_duration_threshold_ms,
+    )
+    return {"status": "ok"}
 
 
 @router.post("/sessions")

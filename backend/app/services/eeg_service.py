@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,22 @@ NEUROPAWN_BOARD_IDS = {
     int(getattr(BoardIds, "NEUROPAWN_KNIGHT_BOARD", 57)),
     int(getattr(BoardIds, "NEUROPAWN_KNIGHT_BOARD_IMU", 66)),
 }
+
+
+@dataclass
+class GestureThresholds:
+    jaw_clench_amplitude: float = 150.0
+    blink_amplitude: float = 100.0
+    blink_duration_ms: float = 500.0
+
+
+current_thresholds = GestureThresholds()
+
+
+def set_thresholds(jaw: float, blink_amp: float, blink_dur: float) -> None:
+    current_thresholds.jaw_clench_amplitude = float(jaw)
+    current_thresholds.blink_amplitude = float(blink_amp)
+    current_thresholds.blink_duration_ms = float(blink_dur)
 
 
 def normalize_serial_port(raw: str | None) -> str:
@@ -324,15 +341,14 @@ def detect_gesture(channel_data: np.ndarray, sample_rate: int) -> str | None:
                 cur = 0
         return (best / sample_rate) * 1000.0
 
-    # New vars, with backward compatibility fallbacks.
-    jaw_thr = float(os.getenv("EEG_JAW_SPIKE_THRESHOLD_UV", os.getenv("EEG_GESTURE_JAW_THRESHOLD", "220")))
-    jaw_min_ms = float(os.getenv("EEG_JAW_SPIKE_MIN_MS", "40"))
-    jaw_max_ms = float(os.getenv("EEG_JAW_SPIKE_MAX_MS", "260"))
-    jaw_rms_mult = float(os.getenv("EEG_JAW_SPIKE_RMS_MULT", "4.0"))
+    jaw_thr = float(current_thresholds.jaw_clench_amplitude)
+    jaw_min_ms = 200.0
+    jaw_max_ms = float(os.getenv("EEG_JAW_SPIKE_MAX_MS", "600"))
+    jaw_rms_mult = float(os.getenv("EEG_JAW_SPIKE_RMS_MULT", "2.0"))
 
-    blink_thr = float(os.getenv("EEG_BLINK_THRESHOLD_UV", os.getenv("EEG_GESTURE_BLINK_THRESHOLD", "90")))
-    blink_min_ms = float(os.getenv("EEG_BLINK_MIN_MS", "300"))
-    blink_rms_mult = float(os.getenv("EEG_BLINK_RMS_MULT", "2.5"))
+    blink_thr = float(current_thresholds.blink_amplitude)
+    blink_min_ms = float(current_thresholds.blink_duration_ms)
+    blink_rms_mult = float(os.getenv("EEG_BLINK_RMS_MULT", "2.0"))
 
     jaw_run = max_run_ms(jaw_abs, jaw_thr)
     blink_run = max_run_ms(blink_abs, blink_thr)
