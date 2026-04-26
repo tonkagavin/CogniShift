@@ -41,10 +41,10 @@ export function DashboardRoute() {
   }, [initPlayer]);
 
   useEffect(() => {
-    if (!eeg.isConnected || !eeg.snapshot) return;
+    if (!eeg.isConnected || !eeg.snapshot || eeg.estimatedMode) return;
     recorder.pushSnapshot(eeg.snapshot);
     setEegHistory((prev) => [...prev, eeg.snapshot].slice(-60));
-  }, [eeg.isConnected, eeg.snapshot, recorder]);
+  }, [eeg.isConnected, eeg.estimatedMode, eeg.snapshot, recorder]);
 
   useEffect(() => {
     const trackId = currentTrack?.trackId;
@@ -149,12 +149,23 @@ export function DashboardRoute() {
             )}
           </div>
           <p className="muted" style={{ marginTop: 10 }}>
-            {eeg.snapshot
-              ? `γ ${eeg.snapshot.gamma.toFixed(2)} · β ${eeg.snapshot.beta.toFixed(2)} · α ${eeg.snapshot.alpha.toFixed(2)} · θ ${eeg.snapshot.theta.toFixed(2)} · state ${eeg.snapshot.dominantState}`
-              : "No signal yet"}
+            {eeg.hardwareError ? (
+              <>
+                <span style={{ color: "#fca5a5" }}>EEG hardware: {eeg.hardwareError}</span>
+              </>
+            ) : eeg.snapshot ? (
+              `γ ${eeg.snapshot.gamma.toFixed(2)} · β ${eeg.snapshot.beta.toFixed(2)} · α ${eeg.snapshot.alpha.toFixed(2)} · θ ${eeg.snapshot.theta.toFixed(2)} · state ${eeg.snapshot.dominantState}`
+            ) : (
+              "No signal yet"
+            )}
             {eeg.gestureDetected ? ` · gesture ${eeg.gestureDetected.type}` : ""}
             {eeg.estimatedMode ? " · Estimated Mode" : ""}
           </p>
+          {eeg.streamStatus && !eeg.hardwareError ? (
+            <p className="muted" style={{ marginTop: 6 }}>
+              {eeg.streamStatus}
+            </p>
+          ) : null}
           <EEGVisualizer snapshot={eeg.snapshot} history={eegHistory.filter(Boolean) as NonNullable<typeof eeg.snapshot>[]} />
         </div>
 

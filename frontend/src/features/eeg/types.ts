@@ -2,6 +2,11 @@ export type MentalState = "focused" | "happy" | "relaxed" | "sleepy" | "sad" | "
 
 export type BrainwaveSnapshot = {
   timestamp: number;
+  /** Present when backend sends a structured error instead of a snapshot */
+  type?: "eeg_error" | "eeg_ready";
+  message?: string;
+  hint?: string;
+  config?: Record<string, unknown>;
   device?: string;
   signalQuality?: number;
   bands?: {

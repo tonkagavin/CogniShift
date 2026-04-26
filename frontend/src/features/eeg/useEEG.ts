@@ -7,6 +7,9 @@ export type UseEEGState = {
   gestureDetected: { type: GestureType; timestamp: number } | null;
   source: "estimated" | "live";
   estimatedMode: boolean;
+  hardwareError: string | null;
+  /** Shown after hardware connects, before first snapshot arrives */
+  streamStatus: string | null;
   connect: () => void;
   disconnect: () => void;
 };
@@ -17,6 +20,8 @@ export function useEEG(): UseEEGState {
   const [isConnected, setIsConnected] = useState(false);
   const [snapshot, setSnapshot] = useState<BrainwaveSnapshot | null>(null);
   const [estimatedMode, setEstimatedMode] = useState(true);
+  const [hardwareError, setHardwareError] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState<string | null>(null);
   const [gestureDetected, setGestureDetected] = useState<UseEEGState["gestureDetected"]>(null);
 
   const lastGestureRef = useRef<{ type: GestureType; timestamp: number } | null>(null);
@@ -64,22 +69,62 @@ export function useEEG(): UseEEGState {
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => {
-      setIsConnected(true);
-      setEstimatedMode(false);
+      setHardwareError(null);
+      setStreamStatus("Connecting to EEG backend…");
+      setIsConnected(false);
+      setEstimatedMode(true);
     };
     ws.onerror = () => {
       setIsConnected(false);
       setEstimatedMode(true);
+      setStreamStatus(null);
+      setHardwareError("WebSocket error (is backend running and CORS/URL correct?)");
       setSnapshot(inferEstimatedState());
     };
     ws.onclose = () => {
       setIsConnected(false);
       setEstimatedMode(true);
+      setStreamStatus(null);
       setSnapshot(inferEstimatedState());
     };
     ws.onmessage = (e) => {
       try {
-        const payload = JSON.parse(e.data) as BrainwaveSnapshot;
+        const payload = JSON.parse(e.data) as BrainwaveSnapshot & {
+          type?: string;
+          message?: string;
+          hint?: string;
+          sampleWindowSeconds?: number;
+          minIntervalSeconds?: number;
+        };
+        if (payload.type === "eeg_ready") {
+          setHardwareError(null);
+          const minInt = payload.minIntervalSeconds ?? Math.max(1, payload.sampleWindowSeconds ?? 2);
+          setStreamStatus(
+            `${payload.message ?? "EEG stream ready."} (snapshots every ~${minInt}s once the buffer has samples)`,
+          );
+          setIsConnected(true);
+          setEstimatedMode(false);
+          return;
+        }
+        if (payload.type === "eeg_error") {
+          const cfg =
+            "config" in payload && payload.config && typeof payload.config === "object"
+              ? JSON.stringify(payload.config as Record<string, unknown>)
+              : "";
+          const msg = [payload.message, cfg || null, payload.hint].filter(Boolean).join(" — ");
+          setHardwareError(msg || "EEG hardware error");
+          setIsConnected(false);
+          setEstimatedMode(true);
+          setStreamStatus(null);
+          setSnapshot({
+            ...inferEstimatedState(),
+            type: "eeg_error",
+            message: payload.message,
+            hint: payload.hint,
+            device: "hardware_error",
+          });
+          return;
+        }
         const normalized: BrainwaveSnapshot = {
           ...payload,
           timestamp:
@@ -93,6 +138,10 @@ export function useEEG(): UseEEGState {
           beta: payload.beta ?? payload.bands?.beta ?? 0,
           gamma: payload.gamma ?? payload.bands?.gamma ?? 0,
         };
+        setHardwareError(null);
+        setStreamStatus(null);
+        setIsConnected(true);
+        setEstimatedMode(false);
         setSnapshot(normalized);
         if (normalized.gesture) {
           const g = { type: normalized.gesture, timestamp: Date.now() };
@@ -113,6 +162,8 @@ export function useEEG(): UseEEGState {
     wsRef.current = null;
     setIsConnected(false);
     setEstimatedMode(true);
+    setHardwareError(null);
+    setStreamStatus(null);
     setSnapshot(inferEstimatedState());
   };
 
@@ -129,6 +180,8 @@ export function useEEG(): UseEEGState {
     gestureDetected,
     source: estimatedMode ? "estimated" : "live",
     estimatedMode,
+    hardwareError,
+    streamStatus,
     connect,
     disconnect,
   };

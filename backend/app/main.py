@@ -12,6 +12,7 @@ from app.routes.song_profiles import api_router as song_profiles_api_router
 from app.routes.song_profiles import router as song_profiles_router
 from app.routes.simulations import router as simulations_router
 from app.routes.spotify_auth import router as spotify_auth_router
+from app.services.eeg_service import streaming_context as eeg_streaming_context
 
 
 def create_app() -> FastAPI:
@@ -36,8 +37,8 @@ def create_app() -> FastAPI:
     )
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict:
+        return {"status": "ok", "eeg": eeg_streaming_context()}
 
     app.include_router(profiles_router)
     app.include_router(song_profiles_router)
