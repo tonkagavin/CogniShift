@@ -25,10 +25,15 @@ async function postJson(path: string, body: Record<string, string>): Promise<Tok
   return (await res.json()) as TokenResponse;
 }
 
-export async function exchangeCodeForToken(code: string, verifier: string): Promise<SpotifyTokenSet> {
+export async function exchangeCodeForToken(
+  code: string,
+  verifier: string,
+  redirectUri: string,
+): Promise<SpotifyTokenSet> {
   const token = await postJson("/spotify/token/exchange", {
     code,
     code_verifier: verifier,
+    redirect_uri: redirectUri,
   });
 
   return { ...token, obtained_at_ms: Date.now() };

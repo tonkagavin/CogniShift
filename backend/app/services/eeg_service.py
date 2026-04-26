@@ -342,22 +342,47 @@ def detect_gesture(channel_data: np.ndarray, sample_rate: int) -> str | None:
         return (best / sample_rate) * 1000.0
 
     jaw_thr = float(current_thresholds.jaw_clench_amplitude)
-    jaw_min_ms = 200.0
-    jaw_max_ms = float(os.getenv("EEG_JAW_SPIKE_MAX_MS", "600"))
-    jaw_rms_mult = float(os.getenv("EEG_JAW_SPIKE_RMS_MULT", "2.0"))
+    jaw_min_ms = float(os.getenv("EEG_JAW_SPIKE_MIN_MS", "80"))
+    jaw_max_ms = float(os.getenv("EEG_JAW_SPIKE_MAX_MS", "450"))
+    jaw_rms_mult = float(os.getenv("EEG_JAW_SPIKE_RMS_MULT", "2.2"))
+    jaw_low_freq_reject_mult = float(os.getenv("EEG_JAW_LOW_FREQ_REJECT_MULT", "1.2"))
 
     blink_thr = float(current_thresholds.blink_amplitude)
-    blink_min_ms = float(current_thresholds.blink_duration_ms)
+    # Human blinks are commonly ~150-400ms; deliberate long blinks typically sit near upper end.
+    calibrated_blink_ms = float(current_thresholds.blink_duration_ms)
+    blink_min_ms = max(220.0, min(420.0, calibrated_blink_ms))
+    blink_max_ms = float(os.getenv("EEG_BLINK_MAX_MS", "480"))
     blink_rms_mult = float(os.getenv("EEG_BLINK_RMS_MULT", "2.0"))
+    blink_high_freq_reject_mult = float(os.getenv("EEG_BLINK_HIGH_FREQ_REJECT_MULT", "1.15"))
 
     jaw_run = max_run_ms(jaw_abs, jaw_thr)
     blink_run = max_run_ms(blink_abs, blink_thr)
 
-    # Jaw clench = spike-like (amplitude + compact duration in high-frequency band).
-    if jaw_peak > jaw_thr and jaw_min_ms <= jaw_run <= jaw_max_ms and jaw_peak > jaw_rms_mult * jaw_rms:
+    # Frequency dominance checks reduce cross-talk:
+    # - Jaw clench should be high-frequency dominant.
+    # - Blink should be low-frequency dominant.
+    high_over_low = jaw_rms / blink_rms
+    low_over_high = blink_rms / jaw_rms
+
+    jaw_candidate = (
+        jaw_peak > jaw_thr
+        and jaw_min_ms <= jaw_run <= jaw_max_ms
+        and jaw_peak > jaw_rms_mult * jaw_rms
+        and high_over_low > jaw_low_freq_reject_mult
+    )
+    blink_candidate = (
+        blink_peak > blink_thr
+        and blink_min_ms <= blink_run <= blink_max_ms
+        and blink_peak > blink_rms_mult * blink_rms
+        and low_over_high > blink_high_freq_reject_mult
+    )
+
+    # If both fire, prefer whichever has clearer spectral dominance.
+    if jaw_candidate and blink_candidate:
+        return "jawClench" if high_over_low >= low_over_high else "longBlink"
+    if jaw_candidate:
         return "jawClench"
-    # Blink = slower event (longer duration, lower band).
-    if blink_peak > blink_thr and blink_run >= blink_min_ms and blink_peak > blink_rms_mult * blink_rms:
+    if blink_candidate:
         return "longBlink"
     return None
 

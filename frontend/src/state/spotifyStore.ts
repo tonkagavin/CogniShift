@@ -65,6 +65,25 @@ async function waitForDeviceId(
   return getState().deviceId;
 }
 
+async function transferPlaybackToDevice(
+  accessToken: string,
+  deviceId: string,
+): Promise<{ ok: boolean; status: number; detail: string }> {
+  const transferRes = await fetch("https://api.spotify.com/v1/me/player", {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      device_ids: [deviceId],
+      play: false,
+    }),
+  });
+  const detail = transferRes.ok ? "" : await transferRes.text().catch(() => "");
+  return { ok: transferRes.ok, status: transferRes.status, detail };
+}
+
 export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
   token: loadToken(),
   isAuthed: !!loadToken(),
@@ -95,7 +114,11 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
 
     try {
       const verifier = takePkceVerifierOrThrow(hit.state);
-      const token = await exchangeCodeForToken(hit.code, verifier);
+      const token = await exchangeCodeForToken(
+        hit.code,
+        verifier,
+        `${window.location.origin}/dashboard`,
+      );
       saveToken(token);
       set({ token, isAuthed: true, lastError: null });
     } finally {
@@ -161,23 +184,31 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
       set({ deviceId: payload.device_id, isReady: true, lastError: null });
       try {
         const accessToken = await get().ensureValidToken();
-        const transferRes = await fetch("https://api.spotify.com/v1/me/player", {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            device_ids: [payload.device_id],
-            play: false,
-          }),
-        });
-        if (!transferRes.ok) {
-          const detail = await transferRes.text().catch(() => "");
+        const firstAttempt = await transferPlaybackToDevice(accessToken, payload.device_id);
+        if (!firstAttempt.ok) {
+          // Spotify can briefly return 404 "Device not found" immediately after ready.
+          if (firstAttempt.status === 404) {
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            const secondAttempt = await transferPlaybackToDevice(accessToken, payload.device_id);
+            if (secondAttempt.ok) {
+              set({
+                lastError:
+                  "Player connected. Device transfer recovered after startup delay. Press Play / Pause to continue.",
+              });
+              return;
+            }
+            set({
+              lastError:
+                "Player connected, but Spotify has not registered this browser device yet. Open Spotify on any device, start a track once, then press Connect Player again.",
+            });
+            return;
+          }
           set({
-            lastError: `Player ready, but failed to transfer playback (${transferRes.status})${detail ? `: ${detail}` : ""}`,
+            lastError: `Player ready, but failed to transfer playback (${firstAttempt.status})${firstAttempt.detail ? `: ${firstAttempt.detail}` : ""}`,
           });
+          return;
         }
+        set({ lastError: "Player ready. Press Play / Pause to control playback in browser." });
       } catch (e) {
         set({ lastError: e instanceof Error ? e.message : String(e) });
       }
@@ -226,20 +257,10 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
     const ok = await player.connect();
     set({ isConnected: ok });
     if (!ok) return;
-
-    const state = await player.getCurrentState();
-    if (!state) {
-      console.error("Player not ready - confirm account is Spotify Premium");
-      set({
-        isPremiumReady: false,
-        lastError: "CogniShift requires a Spotify Premium account for playback",
-      });
-      return;
-    }
-
+    // Do not treat null state as non-premium: SDK may return null until an active playback context exists.
     set({
-      isPremiumReady: true,
-      lastError: "Connected. Open a track and press Play / Pause to start browser playback.",
+      isPremiumReady: null,
+      lastError: "Connected. If playback is paused elsewhere, transfer and press Play / Pause once.",
     });
   },
 

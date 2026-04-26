@@ -11,8 +11,9 @@ export async function beginSpotifyLogin(): Promise<void> {
 
   sessionStorage.setItem(VERIFIER_KEY, verifier);
   sessionStorage.setItem(STATE_KEY, state);
+  const redirectUri = `${window.location.origin}/dashboard`;
   const res = await fetch(
-    `${backendUrl}/spotify/authorize-url?code_challenge=${encodeURIComponent(challenge)}&state=${encodeURIComponent(state)}`,
+    `${backendUrl}/spotify/authorize-url?code_challenge=${encodeURIComponent(challenge)}&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`,
   );
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
